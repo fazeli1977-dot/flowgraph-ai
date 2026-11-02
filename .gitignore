@@ -1,0 +1,47 @@
+﻿# Environments & Virtualenvs
+.venv/
+env/
+venv/
+ENV/
+
+# Python & Caches
+__pycache__/
+*.py[cod]
+*.class
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Node.js & Web Studio
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+apps/web/node_modules/
+apps/web/dist/
+apps/web/.tmp/
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# Temporary patch scripts
+apply_fixes.py
+patch_main.py
+check_stream.py
+
+# Root duplicate/loose files (already structured under apps/web & packages)
+/App.tsx
+/main.py
+/package.json
+/package-lock.json
+/src/
+/tsconfig.json
+/vite.config.ts
