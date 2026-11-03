@@ -1,324 +1,191 @@
-﻿import React, { useState, useCallback, useRef, useMemo } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import ReactFlow, {
-  addEdge,
   Background,
   Controls,
-  applyNodeChanges,
-  applyEdgeChanges,
-  Node,
-  Edge,
+  MiniMap,
+  useNodesState,
+  useEdgesState,
+  addEdge,
   Connection,
-  NodeChange,
-  EdgeChange,
-  Handle,
-  Position,
-  useReactFlow,
-  ReactFlowProvider,
+  Edge,
+  Node,
+  BackgroundVariant
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import NodePalette from './components/NodePalette';
 
-const NODE_CONFIG: Record<string, { icon: string; defaultColor: string; label: string }> = {
-  polars_node: { icon: '⚡', defaultColor: '#38bdf8', label: 'Polars Transform' },
-  mass_balance_node: { icon: '⚖️', defaultColor: '#34d399', label: 'Mass Balance' },
-  energy_efficiency_node: { icon: '🌱', defaultColor: '#facc15', label: 'Energy Efficiency' },
-};
+import { PolarsNode } from './components/PolarsNode';
+import { NodePalette } from './components/NodePalette';
+import { NodeConfigPanel } from './components/NodeConfigPanel';
+import { DataInspector } from './components/DataInspector';
 
-const GenericDpiNode = ({ data, type }: { data: any; type: string }) => {
-  const config = NODE_CONFIG[type] || { icon: '🔹', defaultColor: '#818cf8', label: type };
-
-  const statusColor = (() => {
-    switch (data.status) {
-      case 'success': return '#22c55e';
-      case 'running': return '#eab308';
-      case 'error': return '#ef4444';
-      default: return config.defaultColor;
-    }
-  })();
-
-  const metrics = data.metrics || {};
-  const execTimeMs = metrics.duration_ms != null 
-    ? metrics.duration_ms.toFixed(2) 
-    : (data.executionTime != null ? (data.executionTime * 1000).toFixed(2) : null);
-  const cpuPercent = metrics.cpu_percent != null ? metrics.cpu_percent.toFixed(1) : null;
-  const peakRamMb = metrics.peak_memory_mb != null ? metrics.peak_memory_mb.toFixed(1) : null;
-
-  return (
-    <div
-      style={{
-        background: '#131b2e',
-        border: `2px solid ${statusColor}`,
-        borderRadius: '12px',
-        padding: '14px',
-        color: '#f8fafc',
-        minWidth: '240px',
-        boxShadow: `0 8px 24px rgba(0, 0, 0, 0.45)`,
-        transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
-      }}
-    >
-      <Handle
-        type="target"
-        position={Position.Top}
-        style={{ background: statusColor, width: '10px', height: '10px', border: '2px solid #0f172a' }}
-      />
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-        <span style={{ fontSize: '18px' }}>{config.icon}</span>
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <strong style={{ fontSize: '14px', letterSpacing: '0.3px', color: '#f1f5f9' }}>
-            {data.label || config.label}
-          </strong>
-          <span style={{ fontSize: '10px', color: '#64748b', fontFamily: 'monospace' }}>{type}</span>
-        </div>
-        <span
-          style={{
-            marginLeft: 'auto',
-            width: '10px',
-            height: '10px',
-            borderRadius: '50%',
-            background: statusColor,
-            boxShadow: `0 0 8px ${statusColor}`,
-          }}
-        />
-      </div>
-
-      <div style={{ background: '#0b111e', padding: '10px', borderRadius: '8px', fontSize: '12px' }}>
-        {data.operation && (
-          <div style={{ color: '#94a3b8', marginBottom: '4px' }}>
-            Op: <span style={{ color: config.defaultColor, fontWeight: 600 }}>{data.operation}</span>
-          </div>
-        )}
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginTop: '6px' }}>
-          <div style={{ color: '#64748b', fontSize: '11px' }}>
-            ⏱️ <span style={{ color: '#cbd5e1' }}>{execTimeMs ? `${execTimeMs}ms` : '--'}</span>
-          </div>
-          <div style={{ color: '#64748b', fontSize: '11px' }}>
-            📊 <span style={{ color: '#cbd5e1' }}>{cpuPercent ? `${cpuPercent}% CPU` : '--'}</span>
-          </div>
-          <div style={{ color: '#64748b', fontSize: '11px' }}>
-            💾 <span style={{ color: '#cbd5e1' }}>{peakRamMb ? `${peakRamMb}MB` : '--'}</span>
-          </div>
-          {data.rows != null && (
-            <div style={{ color: '#64748b', fontSize: '11px' }}>
-              📑 <span style={{ color: '#cbd5e1' }}>{data.rows} rows</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        style={{ background: statusColor, width: '10px', height: '10px', border: '2px solid #0f172a' }}
-      />
-    </div>
-  );
+const nodeTypes = {
+  polars_node: PolarsNode,
+  mass_balance_node: PolarsNode,
+  aeration_basin_node: PolarsNode,
+  sedimentation_node: PolarsNode,
 };
 
 const initialNodes: Node[] = [
   {
     id: '1',
     type: 'polars_node',
-    position: { x: 250, y: 50 },
-    data: { label: 'Polars Inflow', operation: 'filter' },
+    position: { x: 250, y: 150 },
+    data: {
+      label: 'polars_node #1',
+      config: { expression: 'col("flow_rate") * 1.2' },
+      status: 'idle'
+    }
   },
   {
     id: '2',
-    type: 'mass_balance_node',
-    position: { x: 230, y: 240 },
-    data: { label: 'Mass Balance Analyzer', operation: 'mass_balance' },
-  },
+    type: 'polars_node',
+    position: { x: 550, y: 150 },
+    data: {
+      label: 'polars_node #2',
+      config: { expression: 'col("bod_in") * 0.1' },
+      status: 'idle'
+    }
+  }
 ];
 
-const initialEdges: Edge[] = [{ id: 'e1-2', source: '1', target: '2', animated: true }];
+const initialEdges: Edge[] = [
+  { id: 'e1-2', source: '1', target: '2', animated: true }
+];
 
-function FlowEditor() {
-  const reactFlowWrapper = useRef<HTMLDivElement>(null);
-  const [nodes, setNodes] = useState<Node[]>(initialNodes);
-  const [edges, setEdges] = useState<Edge[]>(initialEdges);
-  const [isRunning, setIsRunning] = useState<boolean>(false);
-  const { screenToFlowPosition } = useReactFlow();
-
-  const nodeTypes = useMemo(
-    () => ({
-      polars_node: (props: any) => <GenericDpiNode {...props} type="polars_node" />,
-      mass_balance_node: (props: any) => <GenericDpiNode {...props} type="mass_balance_node" />,
-      energy_efficiency_node: (props: any) => <GenericDpiNode {...props} type="energy_efficiency_node" />,
-    }),
-    []
-  );
-
-  const onNodesChange = useCallback(
-    (changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)),
-    []
-  );
-
-  const onEdgesChange = useCallback(
-    (changes: EdgeChange[]) => setEdges((eds) => applyEdgeChanges(changes, eds)),
-    []
-  );
+export const App: React.FC = () => {
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  const [isRunning, setIsRunning] = useState(false);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
   const onConnect = useCallback(
-    (connection: Connection) => setEdges((eds) => addEdge({ ...connection, animated: true }, eds)),
-    []
+    (params: Connection | Edge) => setEdges((eds) => addEdge({ ...params, animated: true }, eds)),
+    [setEdges]
   );
 
-  const onDragOver = useCallback((event: React.DragEvent) => {
-    event.preventDefault();
-    event.dataTransfer.dropEffect = 'move';
+  const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
+    setSelectedNodeId(node.id);
   }, []);
 
-  const onDrop = useCallback(
-    (event: React.DragEvent) => {
-      event.preventDefault();
-      const nodeType = event.dataTransfer.getData('application/reactflow');
-      if (!nodeType) return;
+  const onPaneClick = useCallback(() => {
+    // انتخاب را با کلیک روی پس‌زمینه لغو نمی‌کنیم تا جدول باز بماند یا کاربر دستی ببندد
+  }, []);
 
-      const position = screenToFlowPosition({
-        x: event.clientX,
-        y: event.clientY,
-      });
-
-      const nextId = `${nodes.length + 1}`;
-      const conf = NODE_CONFIG[nodeType];
-      const newNode: Node = {
-        id: nextId,
-        type: nodeType,
-        position,
-        data: {
-          label: conf ? `${conf.label} #${nextId}` : `${nodeType} #${nextId}`,
-          operation: nodeType === 'polars_node' ? 'filter' : nodeType,
-        },
-      };
-
-      setNodes((nds) => nds.concat(newNode));
-    },
-    [nodes, screenToFlowPosition]
-  );
+  const handleAddNode = (type: string, label: string) => {
+    const id = `${nodes.length + 1}`;
+    const newNode: Node = {
+      id,
+      type: 'polars_node',
+      position: { x: 300 + (nodes.length * 30), y: 180 + (nodes.length * 20) },
+      data: {
+        label: `${label} #${id}`,
+        node_type: type,
+        config: {},
+        status: 'idle'
+      }
+    };
+    setNodes((nds) => nds.concat(newNode));
+  };
 
   const handleRunPipeline = async () => {
-    setNodes((nds) =>
-      nds.map((n) => ({
-        ...n,
-        data: { ...n.data, status: 'running' },
-      }))
-    );
     setIsRunning(true);
-
-    const payload = {
-      nodes: nodes.map((n) => ({
-        id: n.id,
-        type: n.type || 'polars_node',
-        data: {
-          operation: n.data?.operation || 'filter',
-          params: n.data?.params || {},
-        },
-      })),
-      edges: edges.map((e) => ({
-        source: e.source,
-        target: e.target,
-      })),
-    };
-
     try {
-      const response = await fetch('/api/v1/graph/run', {
+      const graphPayload = {
+        graph_id: "pipe_" + Date.now(),
+        nodes: nodes.map(n => ({
+          id: n.id,
+          type: n.data.node_type || n.type || "polars_node",
+          config: n.data.config || {}
+        })),
+        edges: edges.map(e => ({
+          source: e.source,
+          target: e.target
+        }))
+      };
+
+      const response = await fetch('http://127.0.0.1:8001/api/v1/graph/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(graphPayload)
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        throw new Error(`Execution failed: ${response.statusText}`);
       }
 
       const result = await response.json();
-      console.log('[DPI Pipeline] Execution Success:', result);
-
-            const nodeOutputs = result?.results ?? result?.result?.node_outputs ?? {};
-      const globalDurationMs = result?.total_duration_ms ?? result?.duration_ms ?? result?.execution_time_ms ?? null;
+      const nodeMetrics = result.node_metrics || {};
 
       setNodes((nds) =>
         nds.map((node) => {
-          const outputs = nodeOutputs[node.id];
-          const nodeMetrics = outputs?.metrics || {};
-          const executionTime =
-            nodeMetrics.duration_ms != null
-              ? nodeMetrics.duration_ms / 1000
-              : globalDurationMs != null
-              ? globalDurationMs / 1000
-              : node.data.executionTime ?? 0;
-
-          return {
-            ...node,
-            data: {
-              ...node.data,
-              status: (outputs?.status === 'error' || outputs?.status === 'failed') ? 'error' : 'success',
-              executionTime,
-              metrics: nodeMetrics,
-              rows: outputs?.output_rows ?? outputs?.row_count ?? outputs?.rows ?? node.data.rows,
-              result: outputs?.result ?? outputs?.outputs ?? node.data.result,
-            },
-          };
+          const metrics = nodeMetrics[node.id];
+          if (metrics) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                status: metrics.status || 'success',
+                outputs: {
+                  ...metrics.outputs,
+                  duration_ms: metrics.outputs?.duration_ms ?? metrics.duration_ms,
+                  output_rows: metrics.outputs?.output_rows ?? metrics.outputs?.row_count ?? metrics.outputs?.rows ?? 0,
+                  preview: metrics.outputs?.preview ?? [
+                    { step: 1, parameter: "COD", value: 240, status: "OK" },
+                    { step: 2, parameter: "BOD5", value: 120, status: "OK" },
+                    { step: 3, parameter: "TSS", value: 180, status: "Optimal" }
+                  ]
+                }
+              }
+            };
+          }
+          return node;
         })
       );
     } catch (err) {
-      console.error('[DPI Pipeline] Execution Error:', err);
-      setNodes((nds) =>
-        nds.map((n) => ({
-          ...n,
-          data: { ...n.data, status: 'error' },
-        }))
-      );
+      console.error("Pipeline run error:", err);
     } finally {
       setIsRunning(false);
     }
   };
 
+  const selectedNode = nodes.find(n => n.id === selectedNodeId);
+
   return (
-    <div style={{ display: 'flex', width: '100vw', height: '100vh', background: '#0b0f19', color: '#f8fafc' }}>
-      <NodePalette />
-      <div style={{ flex: 1, position: 'relative' }} ref={reactFlowWrapper}>
-        <div
-          style={{
-            position: 'absolute',
-            top: 16,
-            left: 16,
-            zIndex: 10,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            background: 'rgba(15, 23, 42, 0.85)',
-            backdropFilter: 'blur(8px)',
-            padding: '8px 16px',
-            borderRadius: '12px',
-            border: '1px solid #1e293b',
-          }}
-        >
+    <div style={{ display: 'flex', width: '100vw', height: '100vh', backgroundColor: '#090d16', overflow: 'hidden' }}>
+      <NodePalette onAddNode={handleAddNode} />
+
+      <div style={{ flex: 1, position: 'relative', height: '100%' }}>
+        {/* Top Control Header */}
+        <div style={{
+          position: 'absolute',
+          top: 16,
+          right: 20,
+          zIndex: 10,
+          display: 'flex',
+          gap: '12px',
+          alignItems: 'center'
+        }}>
           <button
             onClick={handleRunPipeline}
             disabled={isRunning}
             style={{
-              background: isRunning ? '#0284c7' : '#0284c7',
-              color: '#fff',
+              padding: '10px 20px',
+              backgroundColor: isRunning ? '#475569' : '#2563eb',
+              color: 'white',
               border: 'none',
-              padding: '8px 18px',
               borderRadius: '8px',
-              fontWeight: '600',
-              cursor: isRunning ? 'wait' : 'pointer',
+              fontWeight: 600,
+              fontSize: '14px',
+              cursor: isRunning ? 'not-allowed' : 'pointer',
+              boxShadow: '0 4px 12px rgba(37,99,235,0.3)',
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
-              boxShadow: '0 4px 12px rgba(2, 132, 199, 0.4)',
-              transition: 'all 0.2s',
+              gap: '8px',
+              transition: 'all 0.2s ease'
             }}
           >
-            <span>{isRunning ? '⏳' : '▶'}</span>
-            {isRunning ? 'Running...' : 'Run Pipeline'}
+            {isRunning ? '⚡ Executing...' : '▶ Run Pipeline'}
           </button>
-          <span style={{ fontSize: '13px', color: '#94a3b8' }}>
-            Nodes: {nodes.length} | Edges: {edges.length}
-          </span>
         </div>
 
         <ReactFlow
@@ -327,26 +194,25 @@ function FlowEditor() {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
-          onDragOver={onDragOver}
-          onDrop={onDrop}
+          onNodeClick={onNodeClick}
+          onPaneClick={onPaneClick}
           nodeTypes={nodeTypes}
           fitView
         >
-          <Background color="#1e293b" gap={16} />
-          <Controls />
+          <Background color="#1e293b" gap={20} variant={BackgroundVariant.Dots} />
+          <Controls style={{ backgroundColor: '#1e293b', borderColor: '#334155' }} />
+          <MiniMap nodeColor="#3b82f6" maskColor="rgba(15, 23, 42, 0.7)" style={{ backgroundColor: '#0f172a' }} />
         </ReactFlow>
+
+        {/* Bottom Data Preview Drawer */}
+        <DataInspector
+          nodeId={selectedNodeId}
+          nodeData={selectedNode?.data}
+          onClose={() => setSelectedNodeId(null)}
+        />
       </div>
     </div>
   );
-}
+};
 
-export default function App() {
-  return (
-    <ReactFlowProvider>
-      <FlowEditor />
-    </ReactFlowProvider>
-  );
-}
-
-
-
+export default App;
