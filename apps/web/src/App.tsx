@@ -46,6 +46,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'metrics' | 'data' | 'json'>('data');
   const [selectedNodeId, setSelectedNodeId] = useState<string>('source-1');
   const [isConsoleOpen, setIsConsoleOpen] = useState(true);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
 
@@ -114,6 +115,79 @@ export default function App() {
       setIsRunning(false);
     }
   };
+
+  const getActiveNodeTitle = () => {
+    return nodes.find((n) => n.id === selectedNodeId)?.data?.label || selectedNodeId;
+  };
+
+  const exportToCsv = () => {
+    if (!selectedNodeData?.length) return;
+    const columns = Object.keys(selectedNodeData[0]);
+    const header = columns.join(',');
+    const rows = selectedNodeData.map((row) =>
+      columns
+        .map((col) => {
+          const val = row[col];
+          const str = val == null ? '' : String(val);
+          if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+            return '"' + str.replace(/"/g, '""') + '"';
+          }
+          return str;
+        })
+        .join(',')
+    );
+    const csv = [header, ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `${getActiveNodeTitle().toLowerCase().replace(/\s+/g, '_')}_output.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    setToast({ message: `Exported ${getActiveNodeTitle()} to CSV`, type: 'success' });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const exportToParquet = async () => {
+    if (!selectedNodeData?.length) return;
+    const nodeRes = executionResult?.results?.[selectedNodeId];
+    try {
+      const res = await fetch('/api/v1/export/parquet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nodeId: selectedNodeId, result: nodeRes, preview: selectedNodeData }),
+      });
+      if (!res.ok) throw new Error(`Export failed: ${res.statusText}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `${getActiveNodeTitle().toLowerCase().replace(/\s+/g, '_')}_output.parquet`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setToast({ message: `Exported ${getActiveNodeTitle()} to Parquet`, type: 'success' });
+    } catch (err: any) {
+      const blob = new Blob([JSON.stringify(selectedNodeData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `${getActiveNodeTitle().toLowerCase().replace(/\s+/g, '_')}_output.json`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setToast({ message: `Parquet unavailable, exported JSON fallback`, type: 'error' });
+    }
+    setTimeout(() => setToast(null), 3000);
+  };
+
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId);
   const selectedNodeData = selectedNode?.data?.preview;
@@ -281,6 +355,30 @@ export default function App() {
         {/* Console Body Content */}
         {isConsoleOpen && (
           <div style={{ flex: 1, padding: '12px 16px', overflowY: 'auto', fontSize: '12px' }}>
+            {toast && (
+              <div
+                style={{
+                  position: 'fixed',
+                  bottom: 24,
+                  right: 24,
+                  padding: '10px 14px',
+                  backgroundColor: toast.type === 'success' ? '#064e3b' : '#7a1f1f',
+                  color: '#ffffff',
+                  borderRadius: 6,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+                  border: '1px solid #374151',
+                  zIndex: 100,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8
+                }}
+              >
+                {toast.type === 'success' ? '✓' : '⚠'}
+                {toast.message}
+              </div>
+            )}
             {!executionResult && (
               <div style={{ color: '#8b949e', fontStyle: 'italic', paddingTop: '20px', textAlign: 'center' }}>
                 Run the pipeline to inspect Polars DataFrames and hydraulic mass balances.
@@ -314,9 +412,50 @@ export default function App() {
                   </div>
 
                   {selectedNodeData && selectedNodeData.length > 0 && (
-                    <div style={{ fontSize: '11px', color: '#8b949e', display: 'flex', gap: '14px' }}>
-                      <span>Rows: <strong style={{ color: '#79c0ff' }}>{selectedNodeData.length.toLocaleString()}</strong></span>
-                      <span>Columns: <strong style={{ color: '#79c0ff' }}>{Object.keys(selectedNodeData[0]).length}</strong></span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{ fontSize: '11px', color: '#8b949e', display: 'flex', gap: '14px' }}>
+                        <span>Rows: <strong style={{ color: '#79c0ff' }}>{selectedNodeData.length.toLocaleString()}</strong></span>
+                        <span>Columns: <strong style={{ color: '#79c0ff' }}>{Object.keys(selectedNodeData[0]).length}</strong></span>
+                      </div>
+                      <button
+                        onClick={exportToCsv}
+                        disabled={!selectedNodeData?.length}
+                        style={{
+                          backgroundColor: '#1f6feb',
+                          border: 'none',
+                          color: '#ffffff',
+                          fontSize: '10px',
+                          padding: '3px 8px',
+                          borderRadius: '4px',
+                          cursor: selectedNodeData?.length ? 'pointer' : 'not-allowed',
+                          fontWeight: 600,
+                          opacity: selectedNodeData?.length ? 1 : 0.5,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px'
+                        }}
+                      >
+                        Export CSV
+                      </button>
+                      <button
+                        onClick={exportToParquet}
+                        disabled={!selectedNodeData?.length}
+                        style={{
+                          backgroundColor: '#238636',
+                          border: 'none',
+                          color: '#ffffff',
+                          fontSize: '10px',
+                          padding: '3px 8px',
+                          borderRadius: '4px',
+                          cursor: selectedNodeData?.length ? 'pointer' : 'not-allowed',
+                          fontWeight: 600,
+                          opacity: selectedNodeData?.length ? 1 : 0.5,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px',
+                          marginLeft: '6px'
+                        }}
+                      >
+                        Export Parquet
+                      </button>
                     </div>
                   )}
                 </div>
