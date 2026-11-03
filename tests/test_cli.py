@@ -20,8 +20,8 @@ def test_cli_run_pipeline_command(tmp_path: Path):
                 "config": {"operation": "select", "columns": ["q_in"]}
             },
             "node_2": {
-                "type": "civil_mass_balance",
-                "config": {"decay_rate": 0.05}
+                "type": "polars_node",
+                "config": {"operation": "filter", "column": "q_in", "operator": ">", "value": 100}
             }
         },
         "edges": [
@@ -29,7 +29,7 @@ def test_cli_run_pipeline_command(tmp_path: Path):
         ],
         "initial_inputs": {
             "node_1": {
-                "data": {"q_in": [120.0, 150.0]}
+                "data": {"q_in": [80.0, 120.0, 150.0]}
             }
         }
     }
