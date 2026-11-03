@@ -32,6 +32,14 @@ def normalize_node_type(raw_type: str) -> str:
     """نرمال‌سازی نام نودها جهت تطابق با رجیستری موتور"""
     if not raw_type:
         return "polars_node"
+    # Direct registry match first
+    from packages.engine.node_base import NodeRegistry
+    if raw_type in NodeRegistry._nodes:
+        return raw_type
+    # Try appending _node suffix (e.g. 'mass_balance' -> 'mass_balance_node')
+    candidate = f"{raw_type}_node"
+    if candidate in NodeRegistry._nodes:
+        return candidate
     s1 = re.sub(r'(.)([A-Z][a-z]+)', r'\1_\2', raw_type)
     normalized = re.sub(r'([a-z0-9])([A-Z])', r'\1_\2', s1).lower()
     return normalized
@@ -47,6 +55,9 @@ async def execute_graph(req: GraphRunRequest):
         node_type = normalize_node_type(raw_type)
         node_data = n.get("data", {})
         config = node_data.get("config", {}) if isinstance(node_data, dict) else {}
+        # Graceful fallback: allow params at node level as config source
+        if not config and isinstance(n.get("params"), dict):
+            config = n["params"]
         if not config and "config" in n:
             config = n["config"]
         
