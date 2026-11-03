@@ -35,6 +35,7 @@ class MassBalanceNode(BaseNode):
 
         accumulation = (mass_in - mass_out) + generation - consumption
 
+        # Balance summary DataFrame (always returned under "balance")
         result_df = pl.DataFrame({
             "total_mass_in": [mass_in],
             "total_mass_out": [mass_out],
@@ -43,7 +44,28 @@ class MassBalanceNode(BaseNode):
             "accumulation": [accumulation]
         })
 
-        return NodeExecutionResult(outputs={"balance": result_df})
+        # If upstream provided a flow rate DataFrame, enrich it with derived metrics
+        enriched_df = df_in
+        if pl is not None and isinstance(df_in, pl.DataFrame) and not df_in.is_empty():
+            if "flow_rate_m3h" in df_in.columns and "bod5_mg_l" in df_in.columns:
+                enriched_df = df_in.with_columns(
+                    ((pl.col("flow_rate_m3h") * pl.col("bod5_mg_l")) / 1000.0).alias("mass_in_kg_h")
+                )
+            preview = enriched_df.head(10).to_dicts()
+            output_rows = enriched_df.height
+        else:
+            preview = result_df.to_dicts()
+            output_rows = result_df.height
+            enriched_df = result_df
+
+        outputs = {
+            "balance": result_df,
+            "data": enriched_df,
+            "preview": preview,
+            "output_rows": output_rows,
+        }
+
+        return NodeExecutionResult(outputs=outputs)
 
 
 @NodeRegistry.register("energy_efficiency_node")
@@ -62,4 +84,4 @@ class EnergyEfficiencyNode(BaseNode):
             (pl.col("useful_out") / pl.col("total_in")).alias("efficiency_eta")
         )
 
-        return NodeExecutionResult(outputs={"result": df})
+        return NodeExecutionResult(outputs={"result": df, "preview": df.head(10).to_dicts(), "output_rows": df.height})

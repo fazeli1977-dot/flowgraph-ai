@@ -17,6 +17,14 @@ import packages.engine.polars_node  # noqa: F401
 NodePayload = Union[BaseNode, Dict[str, Any], str]
 EdgePayload = Union[Dict[str, Any], Tuple[Any, Any], List[Any]]
 
+# Alias mapping for custom engineering node types to registry-registered node classes.
+_NODE_ALIASES: Dict[str, str] = {
+    "scan_csv": "polars_node",
+    "csv_input": "polars_node",
+    "mass_balance": "mass_balance_node",
+    "energy_efficiency": "energy_efficiency_node",
+}
+
 
 class CycleDetectedError(ValueError):
     """Raised when a graph contains a cycle."""
@@ -283,9 +291,10 @@ class GraphExecutor:
     def _instantiate_node(self, node_id: str, node_type: str, config: Dict[str, Any]) -> BaseNode:
         from packages.engine.node_base import NodeRegistry
 
-        if node_type not in NodeRegistry._nodes:
+        resolved_type = _NODE_ALIASES.get(node_type, node_type)
+        if resolved_type not in NodeRegistry._nodes:
             raise ValueError(f"Unknown node type: {node_type}")
-        node_class = NodeRegistry._nodes[node_type]
+        node_class = NodeRegistry._nodes[resolved_type]
         try:
             return node_class(node_id=node_id, name=config.pop("name", None), **config)
         except TypeError:
