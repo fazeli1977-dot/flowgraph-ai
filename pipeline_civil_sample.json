@@ -1,0 +1,33 @@
+﻿{
+  "nodes": [
+    {
+      "id": "inflow_1",
+      "type": "polars_node",
+      "data": {
+        "operation": "passthrough",
+        "data": [
+          {"timestamp": "2026-03-01T00:00:00", "Q_in": 120.5, "BOD_in": 25.0},
+          {"timestamp": "2026-03-01T01:00:00", "Q_in": 135.2, "BOD_in": 28.5},
+          {"timestamp": "2026-03-01T02:00:00", "Q_in": 110.0, "BOD_in": 22.0}
+        ]
+      }
+    },
+    {
+      "id": "mass_balance_1",
+      "type": "polars_node",
+      "data": {
+        "operation": "passthrough",
+        "params": {
+          "treatment_efficiency": 0.85
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1-2",
+      "source": "inflow_1",
+      "target": "mass_balance_1"
+    }
+  ]
+}
