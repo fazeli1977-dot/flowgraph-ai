@@ -10,14 +10,24 @@ router = APIRouter(prefix="/graph", tags=["execution-stream"])
 async def run_graph_stream(request: GraphRunRequest):
     async def event_generator():
         executor = GraphExecutor()
-        # اکنون request.nodes لیست اشیاء NodeRequest است که متد model_dump دارند
-        nodes_data = [node.model_dump() for node in request.nodes]
-        edges_data = [edge.model_dump() for edge in request.edges]
+        
+        # هندل کردن منعطف تبدیل به دیکشنری (پشتیبانی از Pydantic v2، v1 و دیکشنری خام)
+        nodes_data = [
+            node.model_dump() if hasattr(node, "model_dump") else (node.dict() if hasattr(node, "dict") else node)
+            for node in request.nodes
+        ]
+        edges_data = [
+            edge.model_dump() if hasattr(edge, "model_dump") else (edge.dict() if hasattr(edge, "dict") else edge)
+            for edge in request.edges
+        ]
         
         yield f"data: {json.dumps({'status': 'started'})}\n\n"
         try:
-            result = await executor.execute(nodes=nodes_data, edges=edges_data)
-            yield f"data: {json.dumps({'status': 'completed', 'results': result})}\n\n"
+            result = await executor.run(nodes=nodes_data, edges=edges_data)
+            # تبدیل dataclass نتیجه به دیکشنری برای ارسال در JSON
+            import dataclasses
+            result_dict = dataclasses.asdict(result) if dataclasses.is_dataclass(result) else result
+            yield f"data: {json.dumps({'status': 'completed', 'results': result_dict})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'status': 'error', 'detail': str(e)})}\n\n"
             
