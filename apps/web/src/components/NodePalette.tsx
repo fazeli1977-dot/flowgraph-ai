@@ -1,157 +1,107 @@
 ﻿import React, { useEffect, useState } from 'react';
+import { fetchAvailableNodes, NodeMetadata } from '../services/nodesApi';
 
-export interface NodeDefinition {
-  type: string;
-  label: string;
-  category: string;
-  description?: string;
-  icon: string;
-  color: string;
+interface NodePaletteProps {
+  onAddNode?: (type: string, label: string) => void;
 }
 
-const DEFAULT_NODES: NodeDefinition[] = [
-  {
-    type: 'polars_node',
-    label: 'Polars Transform',
-    category: 'Data Processing',
-    description: 'High performance data pipeline',
-    icon: '⚡',
-    color: '#38bdf8'
-  },
-  {
-    type: 'mass_balance_node',
-    label: 'Mass Balance Analysis',
-    category: 'Civil & Environmental',
-    description: 'Conservation of mass solver',
-    icon: '⚖️',
-    color: '#34d399'
-  },
-  {
-    type: 'energy_efficiency_node',
-    label: 'Energy Efficiency & Loss',
-    category: 'Civil & Mechanical',
-    description: 'First law thermodynamic balance',
-    icon: '🌱',
-    color: '#facc15'
-  }
-];
-
-export const NodePalette: React.FC = () => {
-  const [nodeList, setNodeList] = useState<NodeDefinition[]>(DEFAULT_NODES);
+export const NodePalette: React.FC<NodePaletteProps> = ({ onAddNode }) => {
+  const [nodes, setNodes] = useState<NodeMetadata[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch('/api/v1/nodes/registry')
-      .then((res) => (res.ok ? res.json() : null))
+    fetchAvailableNodes()
       .then((data) => {
-        if (data && Array.isArray(data.registry)) {
-          const registered = data.registry.map((item: any) => {
-            const found = DEFAULT_NODES.find((d) => d.type === item.type);
-            return {
-              type: item.type,
-              label: item.label || item.type,
-              category: item.category || 'Civil & Engineering',
-              description: item.description || '',
-              icon: found ? found.icon : '⚙️',
-              color: found ? found.color : '#818cf8'
-            };
-          });
-          setNodeList(registered);
-        }
+        setNodes(data);
+        setLoading(false);
       })
-      .catch(() => {
-        // Retain default nodes on failure
+      .catch((err) => {
+        setError(err.message || 'Failed to fetch nodes');
+        setLoading(false);
       });
   }, []);
 
-  const onDragStart = (event: React.DragEvent, nodeType: string) => {
-    event.dataTransfer.setData('application/reactflow', nodeType);
+  const onDragStart = (event: React.DragEvent, nodeType: string, label: string) => {
+    event.dataTransfer.setData('application/reactflow/type', nodeType);
+    event.dataTransfer.setData('application/reactflow/label', label);
     event.dataTransfer.effectAllowed = 'move';
   };
 
+  const getCategoryBadgeClass = (category: string) => {
+    switch (category?.toLowerCase()) {
+      case 'civil & environmental':
+      case 'civil':
+      case 'environmental':
+        return 'bg-emerald-950/60 text-emerald-300 border-emerald-700/60';
+      case 'data processing':
+      case 'polars':
+        return 'bg-cyan-950/60 text-cyan-300 border-cyan-700/60';
+      case 'civil & mechanical':
+      case 'mechanical':
+      case 'energy':
+        return 'bg-amber-950/60 text-amber-300 border-amber-700/60';
+      default:
+        return 'bg-slate-800 text-slate-300 border-slate-700';
+    }
+  };
+
+  const getNodeIcon = (type: string, category: string) => {
+    if (type.includes('mass') || category?.toLowerCase().includes('environmental')) return '🧪';
+    if (type.includes('energy') || category?.toLowerCase().includes('mechanical')) return '🌱';
+    return '⚡';
+  };
+
   return (
-    <aside
-      style={{
-        width: '270px',
-        padding: '20px 14px',
-        background: '#0b1120',
-        color: '#f8fafc',
-        borderRight: '1px solid #1e293b',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '16px',
-        userSelect: 'none',
-        boxSizing: 'border-box'
-      }}
-    >
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '18px' }}>🧩</span>
-          <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#38bdf8', letterSpacing: '0.3px' }}>
-            Nodes Palette
-          </h3>
-        </div>
-        <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: '#64748b' }}>
-          Drag components onto canvas
-        </p>
+    <aside className="w-80 bg-slate-900 border-r border-slate-800 flex flex-col h-full select-none z-10 shadow-2xl">
+      <div className="p-4 border-b border-slate-800 bg-slate-950/40">
+        <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2">
+          <span className="text-emerald-400">🧩</span>
+          <span>Nodes Palette</span>
+        </h2>
+        <p className="text-xs text-slate-400 mt-1">Drag or click to add components onto canvas</p>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', overflowY: 'auto' }}>
-        {nodeList.map((node) => (
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {loading && (
+          <div className="flex items-center justify-center p-8 text-sm text-slate-400">
+            <span className="animate-pulse">Loading nodes catalog...</span>
+          </div>
+        )}
+
+        {error && (
+          <div className="p-3 bg-red-950/50 border border-red-800 rounded-lg text-xs text-red-300">
+            {error}
+          </div>
+        )}
+
+        {!loading && !error && nodes.map((node) => (
           <div
             key={node.type}
-            onDragStart={(e) => onDragStart(e, node.type)}
             draggable
-            style={{
-              padding: '12px 14px',
-              borderRadius: '8px',
-              background: '#131d33',
-              color: '#e2e8f0',
-              cursor: 'grab',
-              fontSize: '12px',
-              border: '1px solid #1e2e4a',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '6px',
-              boxShadow: '0 3px 8px rgba(0,0,0,0.25)',
-              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = node.color;
-              e.currentTarget.style.transform = 'translateY(-2px)';
-              e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.35)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = '#1e2e4a';
-              e.currentTarget.style.transform = 'translateY(0)';
-              e.currentTarget.style.boxShadow = '0 3px 8px rgba(0,0,0,0.25)';
-            }}
+            onDragStart={(e) => onDragStart(e, node.type, node.label)}
+            onClick={() => onAddNode && onAddNode(node.type, node.label)}
+            className="group p-3 bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 hover:border-emerald-500/50 rounded-xl cursor-grab active:cursor-grabbing transition-all duration-200 shadow-sm hover:shadow-md"
           >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '15px' }}>{node.icon}</span>
-                <span style={{ fontWeight: 600, color: '#f1f5f9', fontSize: '13px' }}>{node.label}</span>
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-base">{getNodeIcon(node.type, node.category)}</span>
+                <span className="font-semibold text-slate-200 text-sm group-hover:text-emerald-300 transition-colors">
+                  {node.label}
+                </span>
               </div>
-              <span
-                style={{
-                  fontSize: '9px',
-                  fontWeight: 600,
-                  color: node.color,
-                  background: 'rgba(255,255,255,0.06)',
-                  padding: '2px 6px',
-                  borderRadius: '4px',
-                  border: '1px solid #334155'
-                }}
-              >
-                {node.category}
+              <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full border ${getCategoryBadgeClass(node.category)}`}>
+                {node.category || 'General'}
               </span>
             </div>
-            {node.description && (
-              <span style={{ fontSize: '11px', color: '#94a3b8', lineHeight: 1.3 }}>
-                {node.description}
-              </span>
-            )}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', fontSize: '9px', color: '#475569', fontFamily: 'monospace' }}>
-              {node.type}
+
+            <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">
+              {node.description}
+            </p>
+
+            <div className="mt-2.5 pt-2 border-t border-slate-750 flex items-center justify-between text-[11px] text-slate-500">
+              <span className="font-mono text-[10px] text-slate-400">{node.type}</span>
+              <span className="text-emerald-400/80 group-hover:text-emerald-300 transition-colors">Click or Drag +</span>
             </div>
           </div>
         ))}
@@ -161,4 +111,3 @@ export const NodePalette: React.FC = () => {
 };
 
 export default NodePalette;
-
